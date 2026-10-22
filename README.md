@@ -113,7 +113,8 @@ Report a vulnerability through the repository's private security advisory, as de
 
 Apple sends each notification once, when the event happens.
 To load events from before your server was set up, call Get Notification History.
-It covers the last 180 days, and only notifications Apple tried to send, so the app needed a Server URL at the time.
+It covers the last 180 days in Production and 30 days in Sandbox, and only notifications Apple tried to send, so the app needed a Server URL at the time.
+In Production, Apple answers 401 for an app that is not on the App Store yet.
 
 ```ts
 import { fetchNotificationHistory, recordEvent, verifyNotification } from '@latentedge/appstore-notifications';
@@ -142,7 +143,7 @@ npx wrangler secret put APPLE_IAP_PRIVATE_KEY   # paste the whole .p8, header li
 
 Each page of history is one request, and a Worker invocation has a subrequest limit, so run a backfill from an authenticated admin route for one app at a time.
 History payloads are signed the same way as live ones, so they go through the same checks, and `recordEvent` skips any `notificationUUID` already stored.
-A start older than 180 days is moved to the limit; `clampHistoryStart()` tells you whether that happened.
+A start older than the window is moved to the limit; `clampHistoryStart()` tells you whether that happened.
 Errors from Apple throw `AppleApiError` with Apple's `status` and `errorCode`.
 
 `signAppleJwt(key, { bundleId? })` makes the ES256 bearer token on its own.
@@ -158,8 +159,8 @@ Pass `bundleId` for the App Store Server API; leave it out for the App Store Con
 | `recordEvent(db, verified)` | Insert one `appstore_events` row. Returns `{ inserted, row }`; `inserted` is `false` for a redelivery. |
 | `toEventRow(verified)` | The row `recordEvent` writes, for apps that store events elsewhere. |
 | `fetchNotificationHistory(options)` | Async generator over Get Notification History; yields `{ signedPayload }`. |
-| `clampHistoryStart(startDate, now?)` | The earliest start Apple accepts, and whether yours moved. |
-| `HISTORY_DAYS` | `180`, Apple's history window. |
+| `clampHistoryStart(startDate, now?, environment?)` | The earliest start Apple accepts, and whether yours moved. |
+| `HISTORY_DAYS`, `SANDBOX_HISTORY_DAYS` | `180` and `30`, Apple's history windows. |
 | `AppleApiError` | Thrown for a non-200 from Apple; has `status` and `errorCode`. |
 | `signAppleJwt(key, options?)` | ES256 bearer token for Apple's APIs. |
 | `APPLE_ROOT_CA_G3` | The pinned root certificate (DER). |

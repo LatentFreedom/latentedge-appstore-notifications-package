@@ -1,7 +1,9 @@
 import { AppleApiKey, signAppleJwt } from './jwt';
 
-/** Apple keeps notification history for this long. */
+/** Apple keeps Production notification history for this long. */
 export const HISTORY_DAYS = 180;
+/** Sandbox history is shorter; Apple rejects an older start with errorCode 4000012. */
+export const SANDBOX_HISTORY_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const HOSTS = {
@@ -13,7 +15,7 @@ export interface NotificationHistoryOptions {
 	key: AppleApiKey;
 	bundleId: string;
 	environment: 'Production' | 'Sandbox';
-	/** Epoch ms. Clamped to 180 days ago; see clampHistoryStart(). */
+	/** Epoch ms. Clamped to 180 days ago (30 in Sandbox); see clampHistoryStart(). */
 	startDate: number;
 	/** Epoch ms. Defaults to now. */
 	endDate?: number;
@@ -41,10 +43,15 @@ export class AppleApiError extends Error {
 }
 
 /** The earliest start Apple will answer for, and whether `startDate` had to move. */
-export function clampHistoryStart(startDate: number, now = Date.now()): { startDate: number; clamped: boolean } {
-	// One hour of margin: a start exactly 180 days back drifts past the limit
-	// by the time Apple reads the request.
-	const earliest = now - HISTORY_DAYS * DAY_MS + 60 * 60 * 1000;
+export function clampHistoryStart(
+	startDate: number,
+	now = Date.now(),
+	environment: 'Production' | 'Sandbox' = 'Production'
+): { startDate: number; clamped: boolean } {
+	const days = environment === 'Sandbox' ? SANDBOX_HISTORY_DAYS : HISTORY_DAYS;
+	// One hour of margin: a start exactly at the limit drifts past it by the
+	// time Apple reads the request.
+	const earliest = now - days * DAY_MS + 60 * 60 * 1000;
 	return startDate < earliest ? { startDate: earliest, clamped: true } : { startDate, clamped: false };
 }
 
@@ -60,7 +67,7 @@ export function clampHistoryStart(startDate: number, now = Date.now()): { startD
 export async function* fetchNotificationHistory(options: NotificationHistoryOptions): AsyncGenerator<HistoryItem> {
 	const doFetch = options.fetch ?? fetch;
 	const now = options.now ?? Date.now();
-	const { startDate } = clampHistoryStart(options.startDate, now);
+	const { startDate } = clampHistoryStart(options.startDate, now, options.environment);
 	const body = JSON.stringify({ startDate, endDate: options.endDate ?? now });
 	const token = await signAppleJwt(options.key, { bundleId: options.bundleId, now });
 	const url = `${HOSTS[options.environment]}/inApps/v1/notifications/history`;
@@ -75,8 +82,16 @@ export async function* fetchNotificationHistory(options: NotificationHistoryOpti
 		});
 		if (!response.ok) {
 			const error = (await response.json().catch(() => ({}))) as { errorCode?: number; errorMessage?: string };
+			// Apple sends a bare 401 for a bad token, and also in Production for an
+			// app that is not on the App Store yet; say both, since neither has a body.
+			const hint =
+				response.status === 401
+					? ': check the key, issuer ID, and bundle ID; in Production this also means the app is not released yet'
+					: error.errorMessage
+						? `: ${error.errorMessage}`
+						: '';
 			throw new AppleApiError(
-				`Notification history request failed (${response.status})${error.errorMessage ? `: ${error.errorMessage}` : ''}`,
+				`Notification history request failed (${response.status})${hint}`,
 				response.status,
 				error.errorCode
 			);

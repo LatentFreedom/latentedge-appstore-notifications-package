@@ -1,6 +1,6 @@
 {
 	"name": "@latentedge/appstore-notifications",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"description": "Verify and record App Store Server Notifications V2 on Cloudflare Workers with Web Crypto only: x5c chain check to a pinned Apple Root CA - G3, typed payloads, sale event kinds, an idempotent D1 ledger, and notification history.",
 	"type": "module",
 	"main": "./dist/index.js",

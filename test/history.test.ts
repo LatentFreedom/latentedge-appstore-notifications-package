@@ -90,4 +90,11 @@ describe('clampHistoryStart', () => {
 		expect(clamped.clamped).toBe(true);
 		expect(clamped.startDate).toBeGreaterThan(now - 180 * DAY);
 	});
+
+	it('uses Apple\'s 30-day window for Sandbox', () => {
+		const now = Date.now();
+		expect(clampHistoryStart(now - 60 * DAY, now, 'Sandbox').clamped).toBe(true);
+		expect(clampHistoryStart(now - 60 * DAY, now, 'Sandbox').startDate).toBeGreaterThan(now - 30 * DAY);
+		expect(clampHistoryStart(now - 20 * DAY, now, 'Sandbox').clamped).toBe(false);
+	});
 });
