@@ -1,4 +1,4 @@
-# @latentfreedom/latentedge-appstore-notifications
+# @latentedge/appstore-notifications
 
 Verify and record App Store Server Notifications V2 on Cloudflare Workers.
 It uses Web Crypto only: no Node.js APIs, no App Store Server API key, and no runtime dependencies.
@@ -29,7 +29,7 @@ If you need it, confirm the transaction with the App Store Server API as well.
 ## Install
 
 ```sh
-npm install @latentfreedom/latentedge-appstore-notifications
+npm install @latentedge/appstore-notifications
 ```
 
 ## Use in a Worker
@@ -40,10 +40,10 @@ Apply the migration to your D1 database first:
 npx wrangler d1 migrations apply <db-name> --remote
 ```
 
-Copy `node_modules/@latentfreedom/latentedge-appstore-notifications/migrations/0001_appstore_events.sql` into your Worker's `migrations/` folder, or point `migrations_dir` at it.
+Copy `node_modules/@latentedge/appstore-notifications/migrations/0001_appstore_events.sql` into your Worker's `migrations/` folder, or point `migrations_dir` at it.
 
 ```ts
-import { VerificationError, recordEvent, verifyNotification } from '@latentfreedom/latentedge-appstore-notifications';
+import { VerificationError, recordEvent, verifyNotification } from '@latentedge/appstore-notifications';
 
 export default {
 	async fetch(request: Request, env: { DB: D1Database }): Promise<Response> {

@@ -1,5 +1,5 @@
 -- Ledger of verified App Store Server Notifications V2.
--- Owned by @latentfreedom/latentedge-appstore-notifications.
+-- Owned by @latentedge/appstore-notifications.
 -- One row per notificationUUID: Apple redelivers until it gets a 200, so the
 -- primary key is what makes a retry harmless.
 CREATE TABLE IF NOT EXISTS appstore_events (
