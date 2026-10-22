@@ -1,0 +1,3 @@
+# Collapse generated lockfile diffs in GitHub PR views.
+package-lock.json linguist-generated=true
+test/fixtures/*.der binary

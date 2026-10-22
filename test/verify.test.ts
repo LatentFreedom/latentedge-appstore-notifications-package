@@ -1,0 +1,128 @@
+import { describe, expect, it } from 'vitest';
+import { APPLE_ROOT_CA_G3, VerificationError, eventKindFor, recordEvent, verifyJws, verifyNotification } from '../src/index';
+import { isSignedBy, parseCertificate } from '../src/x509';
+import { TEST_ROOT, base64Url, chain, fakeDb, sampleNotification, sampleTransaction, signJws } from './helpers';
+
+const trustTest = { trustedRoots: [TEST_ROOT] };
+
+describe('pinned Apple root', () => {
+	it('parses as a self-signed P-384 CA valid until 2039', async () => {
+		const root = parseCertificate(APPLE_ROOT_CA_G3);
+		expect(root.isCa).toBe(true);
+		expect(root.curve.name).toBe('P-384');
+		expect(new Date(root.notAfter).toISOString()).toBe('2039-04-30T18:19:06.000Z');
+		expect(await isSignedBy(root, root)).toBe(true);
+	});
+
+	it('is the default trust anchor, so a test chain is rejected without an override', async () => {
+		const jws = await signJws(sampleTransaction());
+		await expect(verifyJws(jws)).rejects.toThrow('Chain does not end at a trusted root');
+	});
+});
+
+describe('verifyJws', () => {
+	it('returns the payload of a correctly signed chain', async () => {
+		const tx = sampleTransaction();
+		await expect(verifyJws(await signJws(tx), trustTest)).resolves.toEqual(tx);
+	});
+
+	it('rejects a payload with one changed byte', async () => {
+		const [header, body, sig] = (await signJws(sampleTransaction())).split('.');
+		const tampered = base64Url(JSON.stringify({ ...sampleTransaction(), price: 1 }));
+		expect(tampered).not.toBe(body);
+		await expect(verifyJws(`${header}.${tampered}.${sig}`, trustTest)).rejects.toThrow('JWS signature does not verify');
+	});
+
+	it('rejects a chain from a different root', async () => {
+		const jws = await signJws(sampleTransaction(), { chain: 'other' });
+		await expect(verifyJws(jws, trustTest)).rejects.toThrow('Chain does not end at a trusted root');
+	});
+
+	it('rejects the trusted root spliced onto another chain', async () => {
+		const [otherLeaf, otherIntermediate] = chain('other');
+		const [, , testRoot] = chain('test');
+		const jws = await signJws(sampleTransaction(), { signer: 'other', header: { x5c: [otherLeaf, otherIntermediate, testRoot] } });
+		await expect(verifyJws(jws, trustTest)).rejects.toThrow('Intermediate is not signed by the root');
+	});
+
+	it('rejects a leaf used outside its validity window', async () => {
+		const jws = await signJws(sampleTransaction({ signedDate: Date.now() + 20 * 365 * 24 * 3600 * 1000 }));
+		await expect(verifyJws(jws, trustTest)).rejects.toThrow('Leaf certificate is not valid at the signing date');
+	});
+
+	it('rejects a signature made by a key outside the chain', async () => {
+		const jws = await signJws(sampleTransaction(), { signer: 'other' });
+		await expect(verifyJws(jws, trustTest)).rejects.toThrow('JWS signature does not verify');
+	});
+
+	it('rejects alg none and short chains', async () => {
+		await expect(verifyJws(await signJws({}, { header: { alg: 'none' } }), trustTest)).rejects.toThrow('ES256');
+		await expect(verifyJws(await signJws({}, { header: { x5c: chain('test').slice(0, 2) } }), trustTest)).rejects.toThrow('x5c');
+	});
+
+	it('rejects malformed input with VerificationError', async () => {
+		for (const bad of ['', 'a.b', 'a.b.c', '!!.@@.##']) {
+			await expect(verifyJws(bad, trustTest)).rejects.toBeInstanceOf(VerificationError);
+		}
+	});
+});
+
+describe('verifyNotification', () => {
+	it('verifies the outer payload and the nested transaction', async () => {
+		const body = { signedPayload: await signJws(await sampleNotification()) };
+		const verified = await verifyNotification(body, trustTest);
+		expect(verified.eventKind).toBe('purchase');
+		expect(verified.transaction?.price).toBe(4990);
+		expect(verified.transaction?.currency).toBe('USD');
+	});
+
+	it('rejects a nested transaction from another app', async () => {
+		const notification = await sampleNotification({}, sampleTransaction({ bundleId: 'io.other.app' }));
+		await expect(verifyNotification({ signedPayload: await signJws(notification) }, trustTest)).rejects.toThrow('bundleId');
+	});
+
+	it('rejects a nested transaction with a bad signature', async () => {
+		const notification = await sampleNotification({}, null);
+		(notification.data as Record<string, unknown>).signedTransactionInfo = await signJws(sampleTransaction(), { signer: 'other' });
+		await expect(verifyNotification({ signedPayload: await signJws(notification) }, trustTest)).rejects.toThrow('signature');
+	});
+
+	it('accepts a TEST notification with no transaction', async () => {
+		const notification = await sampleNotification({ notificationType: 'TEST' }, null);
+		const verified = await verifyNotification(await signJws(notification), trustTest);
+		expect(verified.eventKind).toBe('test');
+		expect(verified.transaction).toBeNull();
+	});
+
+	it('rejects a body with no signedPayload', async () => {
+		await expect(verifyNotification({}, trustTest)).rejects.toThrow('Missing signedPayload');
+	});
+});
+
+describe('eventKindFor', () => {
+	it('maps sales types and falls back to other', () => {
+		expect(eventKindFor('DID_RENEW')).toBe('renewal');
+		expect(eventKindFor('REFUND')).toBe('refund');
+		expect(eventKindFor('DID_CHANGE_RENEWAL_PREF')).toBe('other');
+	});
+});
+
+describe('recordEvent', () => {
+	it('stores one row per notificationUUID', async () => {
+		const verified = await verifyNotification(await signJws(await sampleNotification()), trustTest);
+		const db = fakeDb();
+		expect((await recordEvent(db, verified)).inserted).toBe(true);
+		expect((await recordEvent(db, verified)).inserted).toBe(false);
+		expect(db.rows.size).toBe(1);
+		const { row } = await recordEvent(db, verified);
+		expect(row).toMatchObject({ bundle_id: 'io.example.app', event_kind: 'purchase', price_milliunits: 4990, environment: 'Production' });
+	});
+
+	it('stores null price and currency for payloads without pricing', async () => {
+		const tx = sampleTransaction({ price: undefined, currency: undefined });
+		const verified = await verifyNotification(await signJws(await sampleNotification({}, tx)), trustTest);
+		const { row } = await recordEvent(fakeDb(), verified);
+		expect(row.price_milliunits).toBeNull();
+		expect(row.currency).toBeNull();
+	});
+});

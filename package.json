@@ -1,0 +1,57 @@
+{
+	"name": "@latentfreedom/latentedge-appstore-notifications",
+	"version": "0.1.0",
+	"description": "Verify and record App Store Server Notifications V2 on Cloudflare Workers with Web Crypto only: x5c chain check to a pinned Apple Root CA - G3, typed payloads, sale event kinds, and an idempotent D1 ledger.",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"migrations"
+	],
+	"sideEffects": false,
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"prepublishOnly": "npm run typecheck && npm test && npm run build"
+	},
+	"keywords": [
+		"app-store",
+		"app-store-server-notifications",
+		"storekit",
+		"in-app-purchase",
+		"jws",
+		"x5c",
+		"cloudflare-workers",
+		"d1",
+		"webcrypto"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/LatentFreedom/latentedge-appstore-notifications-package.git"
+	},
+	"bugs": {
+		"url": "https://github.com/LatentFreedom/latentedge-appstore-notifications-package/issues"
+	},
+	"homepage": "https://github.com/LatentFreedom/latentedge-appstore-notifications-package#readme",
+	"license": "MIT",
+	"publishConfig": {
+		"registry": "https://registry.npmjs.org",
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=20"
+	},
+	"devDependencies": {
+		"@types/node": "^22.0.0",
+		"typescript": "^5.5.0",
+		"vitest": "^2.0.0"
+	}
+}
