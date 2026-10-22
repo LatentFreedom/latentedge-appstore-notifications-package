@@ -13,7 +13,8 @@
 	},
 	"files": [
 		"dist",
-		"migrations"
+		"migrations",
+		"SECURITY.md"
 	],
 	"sideEffects": false,
 	"scripts": {
