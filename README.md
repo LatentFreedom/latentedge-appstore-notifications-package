@@ -66,6 +66,35 @@ export default {
 Then set the Worker's URL as the Production and Sandbox Server URL, Version 2, on each app's App Information page in App Store Connect.
 One URL can serve every app you publish, because each row stores the app's `bundle_id`.
 
+## Notification history
+
+Apple sends each notification once, when the event happens.
+To load events from before your server was set up, call Get Notification History.
+It covers the last 180 days, and only notifications Apple tried to send, so the app needed a Server URL at the time.
+
+```ts
+import { fetchNotificationHistory, recordEvent, verifyNotification } from '@latentedge/appstore-notifications';
+
+const key = { issuerId: env.APPLE_IAP_ISSUER_ID, keyId: env.APPLE_IAP_KEY_ID, privateKeyPem: env.APPLE_IAP_PRIVATE_KEY };
+for await (const item of fetchNotificationHistory({
+	key,
+	bundleId: 'io.example.app',
+	environment: 'Production',
+	startDate: Date.now() - 180 * 24 * 60 * 60 * 1000,
+})) {
+	await recordEvent(env.DB, await verifyNotification(item.signedPayload));
+}
+```
+
+The key is an In-App Purchase key from App Store Connect > Users and Access > Integrations > In-App Purchase.
+One key works for every app in the team.
+History payloads are signed the same way as live ones, so they go through the same checks, and `recordEvent` skips any `notificationUUID` already stored.
+A start older than 180 days is moved to the limit; `clampHistoryStart()` tells you whether that happened.
+Errors from Apple throw `AppleApiError` with Apple's `status` and `errorCode`.
+
+`signAppleJwt(key, { bundleId? })` makes the ES256 bearer token on its own.
+Pass `bundleId` for the App Store Server API; leave it out for the App Store Connect API, which takes a team API key instead.
+
 ## API
 
 | Export | Purpose |
@@ -75,6 +104,8 @@ One URL can serve every app you publish, because each row stores the app's `bund
 | `eventKindFor(type)` | Map a notification type to `purchase`, `renewal`, `refund`, `refund_reversed`, `revoke`, `expire`, `test`, or `other`. |
 | `recordEvent(db, verified)` | Insert one `appstore_events` row. Returns `{ inserted, row }`; `inserted` is `false` for a redelivery. |
 | `toEventRow(verified)` | The row `recordEvent` writes, for apps that store events elsewhere. |
+| `fetchNotificationHistory(options)` | Async generator over Get Notification History; yields `{ signedPayload }`. |
+| `signAppleJwt(key, options?)` | ES256 bearer token for Apple's APIs. |
 | `APPLE_ROOT_CA_G3` | The pinned root certificate (DER). |
 
 `options.trustedRoots` replaces the pinned root and exists for tests.
