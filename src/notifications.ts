@@ -35,7 +35,6 @@ export interface NotificationIdentity {
 const KIND_BY_TYPE: Record<string, SaleEventKind> = {
 	ONE_TIME_CHARGE: 'purchase',
 	SUBSCRIBED: 'purchase',
-	OFFER_REDEEMED: 'purchase',
 	DID_RENEW: 'renewal',
 	REFUND: 'refund',
 	REFUND_REVERSED: 'refund_reversed',
@@ -45,8 +44,19 @@ const KIND_BY_TYPE: Record<string, SaleEventKind> = {
 	TEST: 'test',
 };
 
-/** Map a notification type to the sale event it represents for reporting. */
-export function eventKindFor(notificationType: string): SaleEventKind {
+/**
+ * Subtypes that change what a type means for sales. An UPGRADE charges now;
+ * any other OFFER_REDEEMED takes effect at the next renewal, which arrives as DID_RENEW.
+ */
+const KIND_BY_SUBTYPE: Record<string, Record<string, SaleEventKind>> = {
+	DID_CHANGE_RENEWAL_PREF: { UPGRADE: 'purchase' },
+	OFFER_REDEEMED: { UPGRADE: 'purchase' },
+};
+
+/** Map a notification type and subtype to the sale event it represents for reporting. */
+export function eventKindFor(notificationType: string, subtype?: string): SaleEventKind {
+	const bySubtype = KIND_BY_SUBTYPE[notificationType];
+	if (bySubtype) return (subtype && bySubtype[subtype]) || 'other';
 	return KIND_BY_TYPE[notificationType] ?? 'other';
 }
 
@@ -129,5 +139,5 @@ export async function verifyNotification(
 		}
 	}
 
-	return { signedPayload, notification, transaction, renewalInfo, eventKind: eventKindFor(notification.notificationType) };
+	return { signedPayload, notification, transaction, renewalInfo, eventKind: eventKindFor(notification.notificationType, notification.subtype) };
 }

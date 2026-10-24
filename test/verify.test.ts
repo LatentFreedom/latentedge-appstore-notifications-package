@@ -195,6 +195,21 @@ describe('eventKindFor', () => {
 		expect(eventKindFor('REFUND')).toBe('refund');
 		expect(eventKindFor('DID_CHANGE_RENEWAL_PREF')).toBe('other');
 	});
+
+	it('reads the subtype where it decides whether money moved', () => {
+		expect(eventKindFor('DID_CHANGE_RENEWAL_PREF', 'UPGRADE')).toBe('purchase');
+		expect(eventKindFor('DID_CHANGE_RENEWAL_PREF', 'DOWNGRADE')).toBe('other');
+		expect(eventKindFor('OFFER_REDEEMED', 'UPGRADE')).toBe('purchase');
+		expect(eventKindFor('OFFER_REDEEMED', 'DOWNGRADE')).toBe('other');
+		expect(eventKindFor('OFFER_REDEEMED')).toBe('other');
+		expect(eventKindFor('SUBSCRIBED', 'RESUBSCRIBE')).toBe('purchase');
+		expect(eventKindFor('DID_RENEW', 'BILLING_RECOVERY')).toBe('renewal');
+	});
+
+	it('uses the subtype when verifying', async () => {
+		const notification = await sampleNotification({ notificationType: 'DID_CHANGE_RENEWAL_PREF', subtype: 'UPGRADE' });
+		expect((await verifyNotification(await signJws(notification), trustTest)).eventKind).toBe('purchase');
+	});
 });
 
 describe('recordEvent', () => {

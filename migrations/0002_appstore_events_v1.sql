@@ -22,3 +22,10 @@ ALTER TABLE appstore_events ADD COLUMN offer_type INTEGER;
 ALTER TABLE appstore_events ADD COLUMN app_account_token TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_appstore_events_original_transaction ON appstore_events(original_transaction_id);
+
+-- 1.0 reads the subtype: an immediate upgrade is a purchase, and an offer
+-- that waits for the next renewal is not. Re-label rows stored before 1.0.
+UPDATE appstore_events SET event_kind = 'purchase'
+	WHERE notification_type IN ('DID_CHANGE_RENEWAL_PREF', 'OFFER_REDEEMED') AND subtype = 'UPGRADE';
+UPDATE appstore_events SET event_kind = 'other'
+	WHERE notification_type = 'OFFER_REDEEMED' AND (subtype IS NULL OR subtype <> 'UPGRADE');

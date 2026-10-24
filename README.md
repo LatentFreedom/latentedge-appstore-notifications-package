@@ -181,7 +181,7 @@ Pass `bundleId` for the App Store Server API; leave it out for the App Store Con
 | `verifyNotification(body, options?)` | Verify a request body (`{ signedPayload }`) or the `signedPayload` string, with its nested transaction and renewal info. Returns `{ notification, transaction, renewalInfo, eventKind }`. |
 | `notificationIdentity(notification)` | The `bundleId`, `appAppleId`, and `environment` of a notification, read from `data`, `summary`, or `externalPurchaseToken`. |
 | `verifyJws(jws, options?)` | Verify any Apple-signed JWS and return its payload. |
-| `eventKindFor(type)` | Map a notification type to `purchase`, `renewal`, `refund`, `refund_reversed`, `revoke`, `expire`, `test`, or `other`. |
+| `eventKindFor(type, subtype?)` | Map a notification type and subtype to `purchase`, `renewal`, `refund`, `refund_reversed`, `revoke`, `expire`, `test`, or `other`. |
 | `recordEvent(db, verified)` | Insert one `appstore_events` row. Returns `{ inserted, row }`; `inserted` is `false` for a redelivery. |
 | `toEventRow(verified)` | The row `recordEvent` writes, for apps that store events elsewhere. |
 | `fetchNotificationHistory(options)` | Async generator over Get Notification History; yields `{ signedPayload }`. |
@@ -203,6 +203,8 @@ Besides the sale fields, each row keeps the transaction's `product_type`, `purch
 `price_milliunits` is in thousandths of `currency` (`4990` is 4.99), and both are null on payloads Apple signed before it added pricing.
 Sandbox and Production events share the table; filter on `environment` for real sales.
 `ONE_TIME_CHARGE` covers consumables, non-consumables, and non-renewing subscriptions; `SUBSCRIBED` and `DID_RENEW` cover auto-renewable subscriptions.
+An immediate upgrade (`DID_CHANGE_RENEWAL_PREF` or `OFFER_REDEEMED` with subtype `UPGRADE`) is a `purchase`.
+Any other `OFFER_REDEEMED` is `other`, because it takes effect at the next renewal, which arrives as `DID_RENEW`.
 Apple sends no notification for a free download.
 For downloads and proceeds after Apple's commission, use the Sales and Trends reports of the App Store Connect API.
 `signAppleJwt` (without `bundleId`) signs the token for that API.
@@ -213,6 +215,7 @@ Apply `0002_appstore_events_v1.sql` before you deploy 1.0.
 `recordEvent` writes the new columns, so an insert fails until they exist.
 If the order slips, your Worker answers 500 and Apple retries, so no notification is lost.
 Rows stored before 1.0 have null in the new columns.
+The migration also re-labels pre-1.0 upgrade and offer rows with the 1.0 `event_kind` rules.
 
 ## Test your endpoint
 

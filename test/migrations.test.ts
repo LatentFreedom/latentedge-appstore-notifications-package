@@ -46,4 +46,26 @@ describe('migrations', () => {
 		expect(row).toMatchObject({ bundle_id: 'io.example.app', product_type: 'Non-Consumable', transaction_reason: 'PURCHASE' });
 		expect(row.signed_payload).toBe(verified.signedPayload);
 	});
+
+	it('re-label upgrade and offer rows stored before 1.0', () => {
+		const db = new DatabaseSync(':memory:');
+		const [first, ...rest] = files;
+		apply(db, first);
+		const insert = db.prepare(
+			`INSERT INTO appstore_events (notification_uuid, bundle_id, environment, notification_type, subtype, event_kind, signed_date)
+			VALUES (?, 'io.example.app', 'Production', ?, ?, ?, 0)`
+		);
+		insert.run('upgrade', 'DID_CHANGE_RENEWAL_PREF', 'UPGRADE', 'other');
+		insert.run('offer-upgrade', 'OFFER_REDEEMED', 'UPGRADE', 'purchase');
+		insert.run('offer-later', 'OFFER_REDEEMED', null, 'purchase');
+		insert.run('offer-downgrade', 'OFFER_REDEEMED', 'DOWNGRADE', 'purchase');
+		insert.run('sale', 'ONE_TIME_CHARGE', null, 'purchase');
+		for (const file of rest) apply(db, file);
+		const kinds = Object.fromEntries(
+			(db.prepare('SELECT notification_uuid, event_kind FROM appstore_events').all() as { notification_uuid: string; event_kind: string }[]).map(
+				(row) => [row.notification_uuid, row.event_kind]
+			)
+		);
+		expect(kinds).toEqual({ upgrade: 'purchase', 'offer-upgrade': 'purchase', 'offer-later': 'other', 'offer-downgrade': 'other', sale: 'purchase' });
+	});
 });
