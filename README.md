@@ -23,6 +23,20 @@ For each one, `verifyJws` checks that:
 6. The JWS signature verifies against the leaf's P-256 key.
 
 It also rejects a transaction whose `bundleId` differs from the notification's, so a valid transaction from one app cannot be spliced into another app's notification.
+
+A valid signature only proves that Apple signed the notification, not that it is for your app.
+Any developer can get a real Apple-signed notification for their own app and post it to your URL.
+Pass `apps` (and `environments`) so `verifyNotification` rejects those:
+
+```ts
+await verifyNotification(body, {
+	apps: [{ bundleId: 'com.example.app', appAppleId: 1234567890 }],
+	environments: ['Production', 'Sandbox'],
+});
+```
+
+`appAppleId` is optional.
+Apple omits it in Sandbox, so a missing value fails only in Production.
 Any failure throws `VerificationError`.
 Nothing is returned from an unverified token.
 
@@ -48,11 +62,14 @@ Copy `node_modules/@latentedge/appstore-notifications/migrations/0001_appstore_e
 ```ts
 import { VerificationError, recordEvent, verifyNotification } from '@latentedge/appstore-notifications';
 
+// Every app that points its Server URL at this Worker.
+const APPS = [{ bundleId: 'com.example.app', appAppleId: 1234567890 }];
+
 export default {
 	async fetch(request: Request, env: { DB: D1Database }): Promise<Response> {
 		let verified;
 		try {
-			verified = await verifyNotification(await request.json());
+			verified = await verifyNotification(await request.json(), { apps: APPS });
 		} catch (error) {
 			if (error instanceof VerificationError || error instanceof SyntaxError) {
 				return new Response('Unverified notification', { status: 401 });
@@ -88,7 +105,7 @@ Forward Apple's exact request body after you verify and store it, and look up th
 
 ```ts
 const rawBody = await request.text();
-const verified = await verifyNotification(JSON.parse(rawBody));
+const verified = await verifyNotification(JSON.parse(rawBody), { apps: APPS });
 const { row } = await recordEvent(env.DB, verified);
 const target = FORWARD_URLS[row.bundle_id]; // e.g. { "com.example.app": "https://api.example.com/apple/notifications" }
 if (target) {
@@ -126,7 +143,7 @@ for await (const item of fetchNotificationHistory({
 	environment: 'Production',
 	startDate: Date.now() - 180 * 24 * 60 * 60 * 1000,
 })) {
-	await recordEvent(env.DB, await verifyNotification(item.signedPayload));
+	await recordEvent(env.DB, await verifyNotification(item.signedPayload, { apps: APPS }));
 }
 ```
 
@@ -154,6 +171,7 @@ Pass `bundleId` for the App Store Server API; leave it out for the App Store Con
 | Export | Purpose |
 |---|---|
 | `verifyNotification(body, options?)` | Verify a request body (`{ signedPayload }`) or the `signedPayload` string, with its nested transaction and renewal info. Returns `{ notification, transaction, renewalInfo, eventKind }`. |
+| `notificationIdentity(notification)` | The `bundleId`, `appAppleId`, and `environment` of a notification, read from `data`, `summary`, or `externalPurchaseToken`. |
 | `verifyJws(jws, options?)` | Verify any Apple-signed JWS and return its payload. |
 | `eventKindFor(type)` | Map a notification type to `purchase`, `renewal`, `refund`, `refund_reversed`, `revoke`, `expire`, `test`, or `other`. |
 | `recordEvent(db, verified)` | Insert one `appstore_events` row. Returns `{ inserted, row }`; `inserted` is `false` for a redelivery. |
@@ -165,6 +183,7 @@ Pass `bundleId` for the App Store Server API; leave it out for the App Store Con
 | `signAppleJwt(key, options?)` | ES256 bearer token for Apple's APIs. |
 | `APPLE_ROOT_CA_G3` | The pinned root certificate (DER). |
 
+`options.apps` and `options.environments` limit `verifyNotification` to your own apps and the environments you accept.
 `options.trustedRoots` replaces the pinned root and exists for tests.
 `options.effectiveDate` sets the time the certificates must be valid at; it defaults to the payload's `signedDate`, as Apple's own libraries do.
 

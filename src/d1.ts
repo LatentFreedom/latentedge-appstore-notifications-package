@@ -1,3 +1,4 @@
+import { notificationIdentity } from './notifications';
 import { VerifiedNotification } from './types';
 
 /**
@@ -32,13 +33,12 @@ export interface EventRow {
 /** Flatten a verified notification into one appstore_events row. */
 export function toEventRow(verified: VerifiedNotification): EventRow {
 	const { notification, transaction, eventKind } = verified;
-	const data = notification.data;
-	const summaryBundle = typeof notification.summary?.bundleId === 'string' ? notification.summary.bundleId : null;
+	const identity = notificationIdentity(notification);
 	return {
 		notification_uuid: notification.notificationUUID,
-		bundle_id: data?.bundleId ?? transaction?.bundleId ?? summaryBundle ?? 'unknown',
-		app_apple_id: data?.appAppleId ?? null,
-		environment: data?.environment ?? transaction?.environment ?? 'unknown',
+		bundle_id: identity.bundleId ?? transaction?.bundleId ?? 'unknown',
+		app_apple_id: identity.appAppleId,
+		environment: identity.environment ?? transaction?.environment ?? 'unknown',
 		notification_type: notification.notificationType,
 		subtype: notification.subtype ?? null,
 		event_kind: eventKind,

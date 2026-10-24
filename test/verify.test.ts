@@ -99,6 +99,62 @@ describe('verifyNotification', () => {
 	});
 });
 
+describe('verifyNotification with expected apps', () => {
+	const ours = { ...trustTest, apps: [{ bundleId: 'io.example.app', appAppleId: 1234567890 }], environments: ['Production' as const] };
+
+	it('accepts a notification for an expected app and environment', async () => {
+		const verified = await verifyNotification(await signJws(await sampleNotification()), ours);
+		expect(verified.eventKind).toBe('purchase');
+	});
+
+	it('rejects a real notification for an app this endpoint does not serve', async () => {
+		const notification = await sampleNotification(
+			{ data: { bundleId: 'io.stranger.app', appAppleId: 999, environment: 'Production' } },
+			null
+		);
+		await expect(verifyNotification(await signJws(notification), ours)).rejects.toThrow('unexpected app (io.stranger.app)');
+	});
+
+	it('rejects a Sandbox notification on a Production-only endpoint', async () => {
+		const notification = await sampleNotification({ data: { bundleId: 'io.example.app', environment: 'Sandbox' } }, null);
+		await expect(verifyNotification(await signJws(notification), ours)).rejects.toThrow('environment Sandbox is not accepted');
+	});
+
+	it('rejects a wrong appAppleId, and a missing one in Production', async () => {
+		const wrong = await sampleNotification({ data: { bundleId: 'io.example.app', appAppleId: 1, environment: 'Production' } }, null);
+		await expect(verifyNotification(await signJws(wrong), ours)).rejects.toThrow('appAppleId');
+		const missing = await sampleNotification({ data: { bundleId: 'io.example.app', environment: 'Production' } }, null);
+		await expect(verifyNotification(await signJws(missing), ours)).rejects.toThrow('appAppleId');
+	});
+
+	it('accepts a Sandbox notification without appAppleId when Sandbox is allowed', async () => {
+		const notification = await sampleNotification({ data: { bundleId: 'io.example.app', environment: 'Sandbox' } }, null);
+		const options = { ...ours, environments: ['Sandbox' as const, 'Production' as const] };
+		await expect(verifyNotification(await signJws(notification), options)).resolves.toBeTruthy();
+	});
+
+	it('reads the app from a summary notification', async () => {
+		const notification = await sampleNotification(
+			{ notificationType: 'RENEWAL_EXTENSION', data: undefined, summary: { bundleId: 'io.example.app', appAppleId: 1234567890, environment: 'Production' } },
+			null
+		);
+		const verified = await verifyNotification(await signJws(notification), ours);
+		expect((await recordEvent(fakeDb(), verified)).row).toMatchObject({ bundle_id: 'io.example.app', environment: 'Production' });
+	});
+
+	it('reads the environment of an external purchase token from its id prefix', async () => {
+		const notification = await sampleNotification(
+			{
+				notificationType: 'EXTERNAL_PURCHASE_TOKEN',
+				data: undefined,
+				externalPurchaseToken: { externalPurchaseId: 'SANDBOX_abc', bundleId: 'io.example.app', appAppleId: 1234567890 },
+			},
+			null
+		);
+		await expect(verifyNotification(await signJws(notification), ours)).rejects.toThrow('environment Sandbox');
+	});
+});
+
 describe('eventKindFor', () => {
 	it('maps sales types and falls back to other', () => {
 		expect(eventKindFor('DID_RENEW')).toBe('renewal');
