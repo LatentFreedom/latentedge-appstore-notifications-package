@@ -129,5 +129,5 @@ export async function verifyNotification(
 		}
 	}
 
-	return { notification, transaction, renewalInfo, eventKind: eventKindFor(notification.notificationType) };
+	return { signedPayload, notification, transaction, renewalInfo, eventKind: eventKindFor(notification.notificationType) };
 }

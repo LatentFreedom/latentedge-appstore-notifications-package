@@ -83,6 +83,8 @@ export type SaleEventKind =
 
 /** A notification whose every signed part has been verified. */
 export interface VerifiedNotification {
+	/** The outer JWS as received, kept so it can be stored or forwarded. */
+	signedPayload: string;
 	notification: NotificationPayload;
 	transaction: TransactionPayload | null;
 	renewalInfo: RenewalInfoPayload | null;

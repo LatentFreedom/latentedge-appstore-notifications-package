@@ -62,7 +62,7 @@ Apply the migration to your D1 database first:
 npx wrangler d1 migrations apply <db-name> --remote
 ```
 
-Copy `node_modules/@latentedge/appstore-notifications/migrations/0001_appstore_events.sql` into your Worker's `migrations/` folder, or point `migrations_dir` at it.
+Copy every file in `node_modules/@latentedge/appstore-notifications/migrations/` into your Worker's `migrations/` folder, or point `migrations_dir` at it.
 
 ```ts
 import { VerificationError, recordEvent, verifyNotification } from '@latentedge/appstore-notifications';
@@ -198,12 +198,21 @@ Pass `bundleId` for the App Store Server API; leave it out for the App Store Con
 ## The `appstore_events` table
 
 One row per `notificationUUID`.
+Besides the sale fields, each row keeps the transaction's `product_type`, `purchase_date`, `expires_date`, `revocation_date`, `revocation_reason`, `transaction_reason`, `in_app_ownership_type`, `quantity`, `offer_type`, and `app_account_token` (the UUID your app set at purchase, which links a sale to your own user).
+`signed_payload` keeps the verified JWS exactly as Apple sent it, so a later version can fill new columns from rows already stored.
 `price_milliunits` is in thousandths of `currency` (`4990` is 4.99), and both are null on payloads Apple signed before it added pricing.
 Sandbox and Production events share the table; filter on `environment` for real sales.
 `ONE_TIME_CHARGE` covers consumables, non-consumables, and non-renewing subscriptions; `SUBSCRIBED` and `DID_RENEW` cover auto-renewable subscriptions.
 Apple sends no notification for a free download.
 For downloads and proceeds after Apple's commission, use the Sales and Trends reports of the App Store Connect API.
 `signAppleJwt` (without `bundleId`) signs the token for that API.
+
+## Upgrading from 0.x
+
+Apply `0002_appstore_events_v1.sql` before you deploy 1.0.
+`recordEvent` writes the new columns, so an insert fails until they exist.
+If the order slips, your Worker answers 500 and Apple retries, so no notification is lost.
+Rows stored before 1.0 have null in the new columns.
 
 ## Test your endpoint
 

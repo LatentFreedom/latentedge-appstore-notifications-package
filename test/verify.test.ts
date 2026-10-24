@@ -205,7 +205,17 @@ describe('recordEvent', () => {
 		expect((await recordEvent(db, verified)).inserted).toBe(false);
 		expect(db.rows.size).toBe(1);
 		const { row } = await recordEvent(db, verified);
-		expect(row).toMatchObject({ bundle_id: 'io.example.app', event_kind: 'purchase', price_milliunits: 4990, environment: 'Production' });
+		expect(row).toMatchObject({
+			bundle_id: 'io.example.app',
+			event_kind: 'purchase',
+			price_milliunits: 4990,
+			environment: 'Production',
+			product_type: 'Non-Consumable',
+			transaction_reason: 'PURCHASE',
+			expires_date: null,
+		});
+		expect(row.purchase_date).toBeTypeOf('number');
+		expect(row.signed_payload).toBe(verified.signedPayload);
 	});
 
 	it('stores null price and currency for payloads without pricing', async () => {

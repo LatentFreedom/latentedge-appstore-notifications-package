@@ -28,6 +28,17 @@ export interface EventRow {
 	currency: string | null;
 	storefront: string | null;
 	signed_date: number;
+	signed_payload: string | null;
+	product_type: string | null;
+	purchase_date: number | null;
+	expires_date: number | null;
+	revocation_date: number | null;
+	revocation_reason: number | null;
+	transaction_reason: string | null;
+	in_app_ownership_type: string | null;
+	quantity: number | null;
+	offer_type: number | null;
+	app_account_token: string | null;
 }
 
 /** Flatten a verified notification into one appstore_events row. */
@@ -49,6 +60,17 @@ export function toEventRow(verified: VerifiedNotification): EventRow {
 		currency: transaction?.currency ?? null,
 		storefront: transaction?.storefront ?? null,
 		signed_date: notification.signedDate,
+		signed_payload: verified.signedPayload ?? null,
+		product_type: transaction?.type ?? null,
+		purchase_date: transaction?.purchaseDate ?? null,
+		expires_date: transaction?.expiresDate ?? null,
+		revocation_date: transaction?.revocationDate ?? null,
+		revocation_reason: transaction?.revocationReason ?? null,
+		transaction_reason: transaction?.transactionReason ?? null,
+		in_app_ownership_type: transaction?.inAppOwnershipType ?? null,
+		quantity: transaction?.quantity ?? null,
+		offer_type: transaction?.offerType ?? null,
+		app_account_token: transaction?.appAccountToken ?? null,
 	};
 }
 
@@ -67,6 +89,17 @@ const COLUMNS = [
 	'currency',
 	'storefront',
 	'signed_date',
+	'signed_payload',
+	'product_type',
+	'purchase_date',
+	'expires_date',
+	'revocation_date',
+	'revocation_reason',
+	'transaction_reason',
+	'in_app_ownership_type',
+	'quantity',
+	'offer_type',
+	'app_account_token',
 ] as const satisfies readonly (keyof EventRow)[];
 
 const INSERT_SQL = `INSERT OR IGNORE INTO appstore_events (${COLUMNS.join(', ')}) VALUES (${COLUMNS.map(() => '?').join(', ')})`;
