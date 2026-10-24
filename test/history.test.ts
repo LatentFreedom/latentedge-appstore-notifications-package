@@ -82,6 +82,72 @@ describe('fetchNotificationHistory', () => {
 	});
 });
 
+describe('fetchNotificationHistory over long runs', () => {
+	async function drain(options: Parameters<typeof fetchNotificationHistory>[0]) {
+		const out: string[] = [];
+		for await (const item of fetchNotificationHistory(options)) out.push(item.signedPayload);
+		return out;
+	}
+
+	it('renews the bearer token before it expires', async () => {
+		const { key } = await testKey();
+		const now = Date.now();
+		let clockNow = now;
+		const iats: number[] = [];
+		const fakeFetch = (async (_url: string, init: RequestInit) => {
+			const auth = new Headers(init.headers).get('Authorization')!;
+			iats.push(decode(auth.slice('Bearer '.length).split('.')[1]).iat);
+			clockNow += 19 * 60 * 1000;
+			const more = iats.length < 2;
+			return new Response(JSON.stringify({ notificationHistory: [], hasMore: more, paginationToken: more ? 'p2' : undefined }));
+		}) as unknown as typeof fetch;
+		await drain({ key, bundleId: 'x', environment: 'Production', startDate: now - DAY, now, fetch: fakeFetch, clock: () => clockNow });
+		expect(iats).toHaveLength(2);
+		expect(iats[1] - iats[0]).toBe(19 * 60);
+	});
+
+	it('waits for Retry-After on 429 and resends the page', async () => {
+		const { key } = await testKey();
+		const waits: number[] = [];
+		let calls = 0;
+		const fakeFetch = (async () => {
+			calls++;
+			if (calls === 1) return new Response('{}', { status: 429, headers: { 'Retry-After': '2' } });
+			return new Response(JSON.stringify({ notificationHistory: [{ signedPayload: 'a' }], hasMore: false }));
+		}) as unknown as typeof fetch;
+		const out = await drain({ key, bundleId: 'x', environment: 'Production', startDate: Date.now() - DAY, fetch: fakeFetch, sleep: async (ms) => void waits.push(ms) });
+		expect(out).toEqual(['a']);
+		expect(calls).toBe(2);
+		expect(waits).toEqual([2000]);
+	});
+
+	it('backs off on 5xx and throws after the last retry', async () => {
+		const { key } = await testKey();
+		const waits: number[] = [];
+		let calls = 0;
+		const fakeFetch = (async () => {
+			calls++;
+			return new Response('{}', { status: 503 });
+		}) as unknown as typeof fetch;
+		const run = drain({ key, bundleId: 'x', environment: 'Production', startDate: Date.now() - DAY, fetch: fakeFetch, maxRetries: 3, sleep: async (ms) => void waits.push(ms) });
+		await expect(run).rejects.toMatchObject({ name: 'AppleApiError', status: 503 });
+		expect(calls).toBe(4);
+		expect(waits).toEqual([1000, 2000, 4000]);
+	});
+
+	it('does not retry a client error', async () => {
+		const { key } = await testKey();
+		let calls = 0;
+		const fakeFetch = (async () => {
+			calls++;
+			return new Response(JSON.stringify({ errorCode: 4000006, errorMessage: 'Invalid request' }), { status: 400 });
+		}) as unknown as typeof fetch;
+		const run = drain({ key, bundleId: 'x', environment: 'Production', startDate: Date.now() - DAY, fetch: fakeFetch, sleep: async () => {} });
+		await expect(run).rejects.toMatchObject({ status: 400, errorCode: 4000006 });
+		expect(calls).toBe(1);
+	});
+});
+
 describe('clampHistoryStart', () => {
 	it('moves a start older than 180 days and reports it', () => {
 		const now = Date.now();

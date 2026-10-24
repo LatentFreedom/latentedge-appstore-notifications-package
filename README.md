@@ -164,6 +164,9 @@ npx wrangler secret put APPLE_IAP_PRIVATE_KEY   # paste the whole .p8, header li
 ```
 
 Each page of history is one request, and a Worker invocation has a subrequest limit, so run a backfill from an authenticated admin route for one app at a time.
+The bearer token is renewed before it expires, so a long run does not fail with a 401 partway.
+A 429 or 5xx from Apple is retried up to `maxRetries` times (default 3): it waits for Apple's `Retry-After`, or 1 s, 2 s, then 4 s, capped at 30 s.
+Each retry is one more subrequest.
 History payloads are signed the same way as live ones, so they go through the same checks, and `recordEvent` skips any `notificationUUID` already stored.
 A start older than the window is moved to the limit; `clampHistoryStart()` tells you whether that happened.
 Errors from Apple throw `AppleApiError` with Apple's `status` and `errorCode`.
