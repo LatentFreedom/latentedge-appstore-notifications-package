@@ -99,6 +99,40 @@ describe('verifyNotification', () => {
 	});
 });
 
+describe('verifyNotification cross-checks the signed parts', () => {
+	function renewal(overrides: Record<string, unknown> = {}) {
+		return { originalTransactionId: '2000000123456789', autoRenewStatus: 1, signedDate: Date.now(), environment: 'Production', ...overrides };
+	}
+
+	async function withRenewal(info: Record<string, unknown>, tx = sampleTransaction()) {
+		const notification = await sampleNotification({ notificationType: 'DID_RENEW' }, tx);
+		(notification.data as Record<string, unknown>).signedRenewalInfo = await signJws(info);
+		return signJws(notification);
+	}
+
+	it('accepts a matching transaction and renewal info', async () => {
+		const verified = await verifyNotification(await withRenewal(renewal()), trustTest);
+		expect(verified.renewalInfo?.originalTransactionId).toBe('2000000123456789');
+	});
+
+	it('rejects renewal info from another subscription', async () => {
+		await expect(verifyNotification(await withRenewal(renewal({ originalTransactionId: '9' })), trustTest)).rejects.toThrow(
+			'Renewal info originalTransactionId'
+		);
+	});
+
+	it('rejects renewal info from another environment', async () => {
+		await expect(verifyNotification(await withRenewal(renewal({ environment: 'Sandbox' })), trustTest)).rejects.toThrow(
+			'Renewal info environment'
+		);
+	});
+
+	it('rejects a Sandbox transaction inside a Production notification', async () => {
+		const notification = await sampleNotification({}, sampleTransaction({ environment: 'Sandbox' }));
+		await expect(verifyNotification(await signJws(notification), trustTest)).rejects.toThrow('Transaction environment');
+	});
+});
+
 describe('verifyNotification with expected apps', () => {
 	const ours = { ...trustTest, apps: [{ bundleId: 'io.example.app', appAppleId: 1234567890 }], environments: ['Production' as const] };
 

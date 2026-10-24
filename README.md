@@ -22,7 +22,12 @@ For each one, `verifyJws` checks that:
 5. The leaf is signed by the intermediate, and the intermediate by the root.
 6. The JWS signature verifies against the leaf's P-256 key.
 
-It also rejects a transaction whose `bundleId` differs from the notification's, so a valid transaction from one app cannot be spliced into another app's notification.
+Apple signs each part on its own, so valid parts from different notifications could be spliced together.
+`verifyNotification` ties them to one event and rejects:
+
+- a transaction whose `bundleId` differs from the notification's;
+- renewal info whose `originalTransactionId` differs from the transaction's;
+- a transaction or renewal info whose `environment` differs from the notification's.
 
 A valid signature only proves that Apple signed the notification, not that it is for your app.
 Any developer can get a real Apple-signed notification for their own app and post it to your URL.

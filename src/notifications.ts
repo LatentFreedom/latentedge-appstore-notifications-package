@@ -100,8 +100,9 @@ export async function verifyNotification(
 	if (typeof notification.notificationType !== 'string' || typeof notification.notificationUUID !== 'string') {
 		throw new VerificationError('Notification is missing its type or UUID');
 	}
+	const identity = notificationIdentity(notification);
 	// Checked before the nested parts so a foreign app's notification costs no further crypto.
-	checkExpected(notificationIdentity(notification), options);
+	checkExpected(identity, options);
 
 	const data = notification.data;
 	const transaction = data?.signedTransactionInfo
@@ -111,10 +112,21 @@ export async function verifyNotification(
 		? await verifyJws<RenewalInfoPayload>(data.signedRenewalInfo, options)
 		: null;
 
-	// Each part is signed on its own, so a valid transaction from one app could
-	// be spliced into another app's notification without this check.
-	if (transaction && data?.bundleId && transaction.bundleId !== data.bundleId) {
+	// Each part is signed on its own, so valid parts from different
+	// notifications could be spliced together; these checks tie them to one event.
+	if (transaction && identity.bundleId && transaction.bundleId !== identity.bundleId) {
 		throw new VerificationError('Transaction bundleId does not match the notification');
+	}
+	if (transaction && renewalInfo && renewalInfo.originalTransactionId !== transaction.originalTransactionId) {
+		throw new VerificationError('Renewal info originalTransactionId does not match the transaction');
+	}
+	if (identity.environment) {
+		if (transaction?.environment && transaction.environment !== identity.environment) {
+			throw new VerificationError('Transaction environment does not match the notification');
+		}
+		if (renewalInfo?.environment && renewalInfo.environment !== identity.environment) {
+			throw new VerificationError('Renewal info environment does not match the notification');
+		}
 	}
 
 	return { notification, transaction, renewalInfo, eventKind: eventKindFor(notification.notificationType) };
