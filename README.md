@@ -205,17 +205,20 @@ Sandbox and Production events share the table; filter on `environment` for real 
 `ONE_TIME_CHARGE` covers consumables, non-consumables, and non-renewing subscriptions; `SUBSCRIBED` and `DID_RENEW` cover auto-renewable subscriptions.
 An immediate upgrade (`DID_CHANGE_RENEWAL_PREF` or `OFFER_REDEEMED` with subtype `UPGRADE`) is a `purchase`.
 Any other `OFFER_REDEEMED` is `other`, because it takes effect at the next renewal, which arrives as `DID_RENEW`.
+A transaction a family member gets through Family Sharing (`in_app_ownership_type` is `FAMILY_SHARED`) is `other`, whatever the notification type.
+Apple sends the member its own `ONE_TIME_CHARGE` or `SUBSCRIBED`, but the money moved on the owner's transaction, which has its own row.
 Apple sends no notification for a free download.
 For downloads and proceeds after Apple's commission, use the Sales and Trends reports of the App Store Connect API.
 `signAppleJwt` (without `bundleId`) signs the token for that API.
 
 ## Upgrading from 0.x
 
-Apply `0002_appstore_events_v1.sql` before you deploy 1.0.
+Apply `0002_appstore_events_v1.sql` and `0003_appstore_events_family_shared.sql` before you deploy 1.0.
 `recordEvent` writes the new columns, so an insert fails until they exist.
 If the order slips, your Worker answers 500 and Apple retries, so no notification is lost.
 Rows stored before 1.0 have null in the new columns.
 The migration also re-labels pre-1.0 upgrade and offer rows with the 1.0 `event_kind` rules.
+If you ran `1.0.0-rc.0`, apply `0003` as well: it re-labels the family-shared rows that rc.0 stored as `purchase`.
 
 ## Test your endpoint
 

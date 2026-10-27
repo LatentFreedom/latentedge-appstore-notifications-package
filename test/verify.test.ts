@@ -210,6 +210,17 @@ describe('eventKindFor', () => {
 		const notification = await sampleNotification({ notificationType: 'DID_CHANGE_RENEWAL_PREF', subtype: 'UPGRADE' });
 		expect((await verifyNotification(await signJws(notification), trustTest)).eventKind).toBe('purchase');
 	});
+
+	it('does not count a family-shared transaction as a sale, a renewal, or a refund', async () => {
+		const shared = sampleTransaction({ inAppOwnershipType: 'FAMILY_SHARED' });
+		const verified = await verifyNotification(await signJws(await sampleNotification({}, shared)), trustTest);
+		expect(verified.eventKind).toBe('other');
+		expect((await recordEvent(fakeDb(), verified)).row.in_app_ownership_type).toBe('FAMILY_SHARED');
+		const revoked = await sampleNotification({ notificationType: 'REVOKE' }, shared);
+		expect((await verifyNotification(await signJws(revoked), trustTest)).eventKind).toBe('other');
+		const owned = sampleTransaction({ inAppOwnershipType: 'PURCHASED' });
+		expect((await verifyNotification(await signJws(await sampleNotification({}, owned)), trustTest)).eventKind).toBe('purchase');
+	});
 });
 
 describe('recordEvent', () => {

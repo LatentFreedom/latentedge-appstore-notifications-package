@@ -139,5 +139,11 @@ export async function verifyNotification(
 		}
 	}
 
-	return { signedPayload, notification, transaction, renewalInfo, eventKind: eventKindFor(notification.notificationType, notification.subtype) };
+	// A family member's access arrives as its own notification (ONE_TIME_CHARGE,
+	// SUBSCRIBED, REVOKE...), but the money moved on the owner's transaction,
+	// so a shared one never counts as a sale, a renewal, or a refund.
+	const eventKind: SaleEventKind =
+		transaction?.inAppOwnershipType === 'FAMILY_SHARED' ? 'other' : eventKindFor(notification.notificationType, notification.subtype);
+
+	return { signedPayload, notification, transaction, renewalInfo, eventKind };
 }

@@ -68,4 +68,25 @@ describe('migrations', () => {
 		);
 		expect(kinds).toEqual({ upgrade: 'purchase', 'offer-upgrade': 'purchase', 'offer-later': 'other', 'offer-downgrade': 'other', sale: 'purchase' });
 	});
+
+	it('re-label family-shared rows stored by 1.0.0-rc.0', () => {
+		const db = new DatabaseSync(':memory:');
+		const [first, second, ...rest] = files;
+		apply(db, first);
+		apply(db, second);
+		const insert = db.prepare(
+			`INSERT INTO appstore_events (notification_uuid, bundle_id, environment, notification_type, event_kind, in_app_ownership_type, signed_date)
+			VALUES (?, 'io.example.app', 'Production', 'ONE_TIME_CHARGE', 'purchase', ?, 0)`
+		);
+		insert.run('owner', 'PURCHASED');
+		insert.run('member', 'FAMILY_SHARED');
+		insert.run('old', null);
+		for (const file of rest) apply(db, file);
+		const kinds = Object.fromEntries(
+			(db.prepare('SELECT notification_uuid, event_kind FROM appstore_events').all() as { notification_uuid: string; event_kind: string }[]).map(
+				(row) => [row.notification_uuid, row.event_kind]
+			)
+		);
+		expect(kinds).toEqual({ owner: 'purchase', member: 'other', old: 'purchase' });
+	});
 });
